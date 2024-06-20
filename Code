@@ -1,1 +1,122 @@
+#Dockerfile
 
+FROM openjdk:8
+# Install necessary packages
+RUN apt-get update && apt-get install -y ssh rsync
+# Download and install Hadoop
+ENV HADOOP_VERSION=3.3.0
+RUN curl -O https://downloads.apache.org/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz && \
+    tar -xzf hadoop-${HADOOP_VERSION}.tar.gz && \
+    mv hadoop-${HADOOP_VERSION} /usr/local/hadoop && \
+    rm hadoop-${HADOOP_VERSION}.tar.gz
+# Set environment variables
+ENV HADOOP_HOME=/usr/local/hadoop
+ENV PATH=$PATH:$HADOOP_HOME/bin
+# Configure SSH
+RUN ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa && \
+    cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
+    chmod 600 ~/.ssh/authorized_keys
+# Copy Hadoop configuration files
+COPY config/* $HADOOP_HOME/etc/hadoop/
+# Expose ports
+EXPOSE 50070 8088 9000
+# Start SSH and Hadoop services
+CMD service ssh start && bash
+
+
+FROM openjdk:8
+# Install necessary packages
+RUN apt-get update && apt-get install -y wget
+# Download and install Spark
+ENV SPARK_VERSION=3.1.1
+RUN wget https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
+    tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
+    mv spark-${SPARK_VERSION}-bin-hadoop3.2 /usr/local/spark && \
+    rm spark-${SPARK_VERSION}-bin-hadoop3.2.tgz
+# Set environment variables
+ENV SPARK_HOME=/usr/local/spark
+ENV PATH=$PATH:$SPARK_HOME/bin
+# Expose ports
+EXPOSE 8080 7077
+CMD ["/bin/bash"]
+
+
+FROM jupyter/base-notebook
+# Expose the Jupyter port
+EXPOSE 8888
+# Start Jupyter notebook
+CMD ["start-notebook.sh", "--NotebookApp.token=''"]
+
+
+FROM apache/nifi:latest
+# Expose NiFi ports
+EXPOSE 8080 8443
+# Start NiFi
+CMD ["nifi.sh", "run"]
+
+
+FROM mongo:latest
+# Expose MongoDB port
+EXPOSE 27017
+CMD ["mongod"]
+
+
+FROM ubuntu:20.04
+# Install necessary packages and TruckSim
+RUN apt-get update && apt-get install -y \
+    software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y python3.8 python3-pip
+# Copy TruckSim files
+COPY trucks-sim /opt/trucks-sim
+# Set working directory
+WORKDIR /opt/trucks-sim
+# Install dependencies
+RUN pip3 install -r requirements.txt
+# Expose TruckSim port (if applicable)
+EXPOSE 5000
+CMD ["python3", "app.py"]
+
+
+FROM wurstmeister/kafka:latest
+# Expose Kafka ports
+EXPOSE 9092 2181
+CMD ["start-kafka.sh"]
+
+FROM apache/superset:latest
+# Expose Superset port
+EXPOSE 8088
+CMD ["gunicorn", "--workers", "3", "--timeout", "60", "-b", "0.0.0.0:8088", "superset.app:create_app()"]
+
+FROM mariadb:latest
+# Expose MariaDB port
+EXPOSE 3306
+CMD ["mysqld"]
+
+
+FROM minio/minio:latest
+# Expose MinIO port
+EXPOSE 9000
+CMD ["minio", "server", "/data"]
+
+FROM apache/airflow:latest
+# Expose Airflow ports
+EXPOSE 8080 8793
+CMD ["airflow", "webserver"]
+
+FROM grafana/grafana:latest
+# Expose Grafana port
+EXPOSE 3000
+CMD ["grafana-server"]
+
+FROM python:3.8-slim
+# Install necessary packages and LabBuilder
+COPY lab-builder /opt/lab-builder
+# Set working directory
+WORKDIR /opt/lab-builder
+# Install dependencies
+RUN pip install -r requirements.txt
+# Expose LabBuilder port (if applicable)
+EXPOSE 6000
+CMD ["python", "lab_builder.py"]
